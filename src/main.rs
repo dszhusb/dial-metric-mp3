@@ -13,7 +13,7 @@ use crate::{
     frequency_bands::{
         calculate_band_energies, print_histogram_bar, print_spectrum_position, print_spread_bar,
     },
-    utils::truncate_filename,
+    utils::{CachedMetrics, load_cache, save_cache, should_analyze, truncate_filename},
 };
 
 fn main() {
@@ -35,6 +35,10 @@ fn main() {
 }
 
 fn analyze_directory(dir_path: &Path) {
+    let cache_file = dir_path.join("file_calc_cache.json");
+
+    let mut cache = load_cache(&cache_file);
+
     // Read all entries in the directory
     let entries = match fs::read_dir(dir_path) {
         Ok(entries) => entries,
@@ -70,45 +74,85 @@ fn analyze_directory(dir_path: &Path) {
     );
     println!("{}", "=".repeat(80));
 
-    println!(
-        "\nAnalyzing {} MP3 file(s) in {}\n",
-        mp3_files.len(),
-        dir_path.display()
-    );
-    println!("{}", "=".repeat(90));
+    let mut updated = false;
 
     for file_path in mp3_files.iter() {
-        analyze_and_display(file_path);
+        let filename = file_path.file_name().unwrap().to_string_lossy().to_string();
+
+        // Check if we need to analyze this file
+        let needs_analysis = should_analyze(&file_path, &cache, &filename);
+
+        if needs_analysis {
+            if let Ok(metrics) = analyze_frequency_distribution(&file_path) {
+                // Get file metadata
+                let metadata = fs::metadata(&file_path).ok();
+                let file_size = metadata.as_ref().and_then(|m| Some(m.len()));
+                let modified_time = metadata.as_ref().and_then(|m| {
+                    m.modified().ok().and_then(|t| {
+                        t.duration_since(std::time::UNIX_EPOCH)
+                            .ok()
+                            .map(|d| d.as_secs())
+                    })
+                });
+
+                // Update cache
+                cache.insert(
+                    filename.clone(),
+                    CachedMetrics {
+                        filename: filename.clone(),
+                        centroid: metrics.centroid,
+                        spread: metrics.spread,
+                        band_percentages: metrics.band_percentages.clone(),
+                        file_size,
+                        modified_time,
+                    },
+                );
+                updated = true;
+
+                display_metrics(&filename, &metrics);
+            } else {
+                println!(
+                    "\n{:<40}  ERROR: Failed to analyze",
+                    truncate_filename(&filename, 40)
+                );
+            }
+        } else {
+            // Use cached data
+            if let Some(cached) = cache.get(&filename) {
+                let metrics = SpectrumMetrics {
+                    centroid: cached.centroid,
+                    spread: cached.spread,
+                    band_percentages: cached.band_percentages.clone(),
+                };
+                display_metrics(&filename, &metrics);
+            }
+        }
+    }
+
+    // Save cache if updated
+    if updated {
+        save_cache(&cache_file, &cache);
     }
 }
 
-fn analyze_and_display(path: &Path) {
-    let filename = path.file_name().unwrap().to_string_lossy();
+fn display_metrics(filename: &str, metrics: &SpectrumMetrics) {
+    print!("\n{:<40}", truncate_filename(filename, 40));
 
-    match analyze_frequency_distribution(path) {
-        Ok(metrics) => {
-            println!("\n{:<40}", truncate_filename(&filename, 40));
-
-            // Display spectral centroid
-            print!("Centroid: ");
-            print_spectrum_position(metrics.centroid);
-            print!(" ({:>5.1})", metrics.centroid);
-
-            // Display spectral spread
-            print!("  │  Spread: ");
-            print_spread_bar(metrics.spread);
-            println!(" ({:>5.1})", metrics.spread);
-
-            println!("Band Distribution:");
-            // Display individual band percentages as histogram
-            for pct in &metrics.band_percentages {
-                print_histogram_bar(*pct);
-            }
-        }
-        Err(e) => {
-            println!("\n{:<40}  ERROR: {}", truncate_filename(&filename, 40), e);
-        }
+    // Display individual band percentages as histogram
+    for pct in &metrics.band_percentages {
+        print!("  ");
+        print_histogram_bar(*pct);
     }
+
+    // Display spectral centroid
+    print!("  │  Centroid: ");
+    print_spectrum_position(metrics.centroid);
+    print!(" ({:>5.1})", metrics.centroid);
+
+    // Display spectral spread
+    print!("  │  Spread: ");
+    print_spread_bar(metrics.spread);
+    println!(" ({:>5.1})", metrics.spread);
 }
 
 fn analyze_frequency_distribution(
