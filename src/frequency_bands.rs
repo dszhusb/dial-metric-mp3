@@ -148,3 +148,21 @@ pub fn print_spread_bar(spread: f32) {
     }
     print!("]");
 }
+
+pub fn print_histogram_bar(percentage: f32) {
+    // Each character represents 5% (max 20 chars for 100%)
+    let max_width = 10;
+    let blocks = (percentage / 10.0 * max_width as f32) * 8.0;
+    let full_blocks = blocks as usize / 8;
+    let remainder = blocks as usize % 8;
+
+    print!("{:>5.1}% | ", percentage);
+    let block_chars: [char; 9] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
+    for _ in 0..full_blocks {
+        print!("█");
+    }
+    if remainder > 0 {
+        print!("{}", block_chars[remainder]);
+    }
+    println!();
+}

@@ -10,7 +10,9 @@ use frequency_bands::{SpectrumMetrics, get_bands};
 use utils::get_samples;
 
 use crate::{
-    frequency_bands::{calculate_band_energies, print_spectrum_position, print_spread_bar},
+    frequency_bands::{
+        calculate_band_energies, print_histogram_bar, print_spectrum_position, print_spread_bar,
+    },
     utils::truncate_filename,
 };
 
@@ -85,15 +87,10 @@ fn analyze_and_display(path: &Path) {
 
     match analyze_frequency_distribution(path) {
         Ok(metrics) => {
-            print!("\n{:<40}", truncate_filename(&filename, 40));
-
-            // Display individual band percentages
-            for pct in &metrics.band_percentages {
-                print!("  {:>5.1}%", pct);
-            }
+            println!("\n{:<40}", truncate_filename(&filename, 40));
 
             // Display spectral centroid
-            print!("  │  Centroid: ");
+            print!("Centroid: ");
             print_spectrum_position(metrics.centroid);
             print!(" ({:>5.1})", metrics.centroid);
 
@@ -101,6 +98,12 @@ fn analyze_and_display(path: &Path) {
             print!("  │  Spread: ");
             print_spread_bar(metrics.spread);
             println!(" ({:>5.1})", metrics.spread);
+
+            println!("Band Distribution:");
+            // Display individual band percentages as histogram
+            for pct in &metrics.band_percentages {
+                print_histogram_bar(*pct);
+            }
         }
         Err(e) => {
             println!("\n{:<40}  ERROR: {}", truncate_filename(&filename, 40), e);
