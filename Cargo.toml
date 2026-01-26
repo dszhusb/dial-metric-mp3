@@ -1,0 +1,8 @@
+[package]
+name = "rust-audio-analysis"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+minimp3 = "0.6.1"
+rustfft = "6.4.1"
