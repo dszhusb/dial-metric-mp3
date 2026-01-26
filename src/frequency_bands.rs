@@ -4,14 +4,8 @@ const FRAME_SIZE: usize = 2048;
 const HOP_SIZE: usize = 512;
 
 pub struct FrequencyBand {
-    pub(crate) name: &'static str,
     pub(crate) low_hz: usize,
     pub(crate) high_hz: usize,
-}
-pub struct BandAnalysis {
-    pub(crate) band: FrequencyBand,
-    pub(crate) total_energy: f64,
-    pub(crate) percentage: f32,
 }
 
 pub struct SpectrumMetrics {
@@ -23,42 +17,38 @@ pub struct SpectrumMetrics {
 pub fn get_bands(sample_rate: usize) -> Vec<FrequencyBand> {
     vec![
         FrequencyBand {
-            name: "Mud",
             low_hz: 0,
             high_hz: 20,
         },
         FrequencyBand {
-            name: "Sub-bass",
             low_hz: 20,
             high_hz: 60,
         },
         FrequencyBand {
-            name: "Bass",
             low_hz: 60,
             high_hz: 250,
         },
         FrequencyBand {
-            name: "Low-mids",
             low_hz: 250,
             high_hz: 500,
         },
         FrequencyBand {
-            name: "Mids",
+            low_hz: 250,
+            high_hz: 500,
+        },
+        FrequencyBand {
             low_hz: 500,
             high_hz: 2000,
         },
         FrequencyBand {
-            name: "High-mids",
             low_hz: 2000,
             high_hz: 4000,
         },
         FrequencyBand {
-            name: "Highs",
             low_hz: 4000,
             high_hz: 6000,
         },
         FrequencyBand {
-            name: "Air",
             low_hz: 6000,
             high_hz: sample_rate / 2,
         },
