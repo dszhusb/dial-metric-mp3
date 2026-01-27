@@ -11,6 +11,7 @@ pub struct FrequencyBand {
 pub struct SpectrumMetrics {
     pub(crate) centroid: f32, // Where on the spectrum (0-100, low to high)
     pub(crate) spread: f32,   // How distributed (0-100, focused to broad)
+    pub(crate) zero_crossing_rate: f32, // Sharpness/noisiness (0-100)
     pub(crate) band_percentages: Vec<f32>,
 }
 
@@ -117,6 +118,33 @@ pub fn calculate_band_energies(
     }
 
     Ok(band_energies)
+}
+
+pub fn calculate_zero_crossing_rate(samples: &[f32]) -> f32 {
+    if samples.len() < 2 {
+        return 0.0;
+    }
+
+    let mut zero_crossings = 0;
+
+    for i in 1..samples.len() {
+        // Check if sign changed (crossed zero)
+        if (samples[i] >= 0.0 && samples[i - 1] < 0.0)
+            || (samples[i] < 0.0 && samples[i - 1] >= 0.0)
+        {
+            zero_crossings += 1;
+        }
+    }
+
+    // Calculate rate as crossings per sample
+    let zcr = zero_crossings as f32 / samples.len() as f32;
+
+    // Normalize to 0-100 scale
+    // Typical ZCR ranges from ~0.01 (bass-heavy) to ~0.15 (very sharp/noisy)
+    // We'll map 0.15 to 100 for normalization
+    let normalized_zcr = (zcr / 0.15 * 100.0).min(100.0);
+
+    normalized_zcr
 }
 
 pub fn print_spectrum_position(centroid: f32) {

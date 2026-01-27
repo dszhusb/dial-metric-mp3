@@ -11,7 +11,8 @@ use utils::get_samples;
 
 use crate::{
     frequency_bands::{
-        calculate_band_energies, print_histogram_bar, print_spectrum_position, print_spread_bar,
+        calculate_band_energies, calculate_zero_crossing_rate, print_histogram_bar,
+        print_spectrum_position, print_spread_bar,
     },
     utils::{CachedMetrics, load_cache, save_cache, should_analyze, truncate_filename},
 };
@@ -102,6 +103,7 @@ fn analyze_directory(dir_path: &Path) {
                         filename: filename.clone(),
                         centroid: metrics.centroid,
                         spread: metrics.spread,
+                        zero_crossing_rate: metrics.zero_crossing_rate,
                         band_percentages: metrics.band_percentages.clone(),
                         file_size,
                         modified_time,
@@ -122,6 +124,7 @@ fn analyze_directory(dir_path: &Path) {
                 let metrics = SpectrumMetrics {
                     centroid: cached.centroid,
                     spread: cached.spread,
+                    zero_crossing_rate: cached.zero_crossing_rate,
                     band_percentages: cached.band_percentages.clone(),
                 };
                 display_metrics(&filename, &metrics);
@@ -152,7 +155,12 @@ fn display_metrics(filename: &str, metrics: &SpectrumMetrics) {
     // Display spectral spread
     print!("  │  Spread: ");
     print_spread_bar(metrics.spread);
-    println!(" ({:>5.1})", metrics.spread);
+    print!(" ({:>5.1})", metrics.spread);
+
+    // Display zero-crossing rate
+    print!("  │  ZCR: ");
+    print_spread_bar(metrics.zero_crossing_rate);
+    println!(" ({:>5.1})", metrics.zero_crossing_rate);
 }
 
 fn analyze_frequency_distribution(
@@ -168,6 +176,9 @@ fn analyze_frequency_distribution(
 
     // Calculate energy distribution
     let band_energies = calculate_band_energies(&all_samples, sample_rate, &bands)?;
+
+    // Calculate zero-crossing rate
+    let zcr = calculate_zero_crossing_rate(&all_samples);
 
     // Calculate total energy
     let total_energy: f64 = band_energies.iter().sum();
@@ -213,6 +224,7 @@ fn analyze_frequency_distribution(
     Ok(SpectrumMetrics {
         centroid,
         spread: normalized_spread,
+        zero_crossing_rate: zcr,
         band_percentages,
     })
 }
