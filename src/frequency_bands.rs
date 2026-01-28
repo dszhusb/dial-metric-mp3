@@ -48,6 +48,29 @@ pub fn get_bands(sample_rate: usize) -> Vec<FrequencyBand> {
     ]
 }
 
+pub fn calculate_band_positions(bands: &[FrequencyBand], sample_rate: usize) -> Vec<f32> {
+    let nyquist = sample_rate as f32 / 2.0;
+
+    bands
+        .iter()
+        .map(|band| {
+            // Calculate geometric mean (center) of the band
+            let low = band.low_hz.max(1) as f32;
+            let high = band.high_hz.min(sample_rate / 2) as f32;
+            let center = (low * high).sqrt();
+
+            // Map to 0-100 scale using logarithmic scaling
+            // Human hearing is logarithmic (octaves, not linear Hz)
+            let log_min = 20.0_f32.ln(); // 20 Hz
+            let log_max = nyquist.ln();
+            let log_center = center.ln();
+
+            // Normalize to 0-100
+            ((log_center - log_min) / (log_max - log_min) * 100.0).clamp(0.0, 100.0)
+        })
+        .collect()
+}
+
 pub fn calculate_band_energies(
     samples: &[f32],
     sample_rate: usize,

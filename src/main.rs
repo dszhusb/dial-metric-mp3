@@ -11,8 +11,8 @@ use utils::get_samples;
 
 use crate::{
     frequency_bands::{
-        calculate_band_energies, calculate_zero_crossing_rate, print_histogram_bar,
-        print_spectrum_position, print_spread_bar,
+        calculate_band_energies, calculate_band_positions, calculate_zero_crossing_rate,
+        print_histogram_bar, print_spectrum_position, print_spread_bar,
     },
     utils::{CachedMetrics, load_cache, save_cache, should_analyze, truncate_filename},
 };
@@ -198,7 +198,8 @@ fn analyze_frequency_distribution(
 
     // Calculate spectral centroid (weighted average position)
     // Map each band to a position: 0 (sub-bass) to 100 (highs)
-    let band_positions = [8.0, 18.0, 30.0, 45.0, 62.0, 78.0, 92.0];
+    let band_positions = calculate_band_positions(&bands, sample_rate);
+
     let centroid = band_percentages
         .iter()
         .zip(band_positions.iter())
