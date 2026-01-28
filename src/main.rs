@@ -139,16 +139,10 @@ fn analyze_directory(dir_path: &Path) {
 }
 
 fn display_metrics(filename: &str, metrics: &SpectrumMetrics) {
-    print!("\n{:<40}", truncate_filename(filename, 40));
-
-    // Display individual band percentages as histogram
-    for pct in &metrics.band_percentages {
-        print!("  ");
-        print_histogram_bar(*pct);
-    }
+    println!("\n{:<40}", truncate_filename(filename, 40));
 
     // Display spectral centroid
-    print!("  │  Centroid: ");
+    print!("Centroid: ");
     print_spectrum_position(metrics.centroid);
     print!(" ({:>5.1})", metrics.centroid);
 
@@ -161,6 +155,13 @@ fn display_metrics(filename: &str, metrics: &SpectrumMetrics) {
     print!("  │  ZCR: ");
     print_spread_bar(metrics.zero_crossing_rate);
     println!(" ({:>5.1})", metrics.zero_crossing_rate);
+
+    // Display individual band percentages as histogram
+    println!("Frequency Bands:");
+    for pct in &metrics.band_percentages {
+        print!("  ");
+        print_histogram_bar(*pct);
+    }
 }
 
 fn analyze_frequency_distribution(
