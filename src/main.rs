@@ -12,7 +12,7 @@ use utils::get_samples;
 use crate::{
     frequency_bands::{
         calculate_band_energies, calculate_band_positions, calculate_zero_crossing_rate,
-        print_histogram_bar, print_spectrum_position, print_spread_bar,
+        print_duration, print_histogram_bar, print_spectrum_position, print_spread_bar,
     },
     utils::{CachedMetrics, load_cache, save_cache, should_analyze, truncate_filename},
 };
@@ -104,6 +104,7 @@ fn analyze_directory(dir_path: &Path) {
                         centroid: metrics.centroid,
                         spread: metrics.spread,
                         zero_crossing_rate: metrics.zero_crossing_rate,
+                        duration_seconds: metrics.duration_seconds,
                         band_percentages: metrics.band_percentages.clone(),
                         file_size,
                         modified_time,
@@ -125,6 +126,7 @@ fn analyze_directory(dir_path: &Path) {
                     centroid: cached.centroid,
                     spread: cached.spread,
                     zero_crossing_rate: cached.zero_crossing_rate,
+                    duration_seconds: cached.duration_seconds,
                     band_percentages: cached.band_percentages.clone(),
                 };
                 display_metrics(&filename, &metrics);
@@ -154,7 +156,11 @@ fn display_metrics(filename: &str, metrics: &SpectrumMetrics) {
     // Display zero-crossing rate
     print!("  │  ZCR: ");
     print_spread_bar(metrics.zero_crossing_rate);
-    println!(" ({:>5.1})", metrics.zero_crossing_rate);
+    print!(" ({:>5.1})", metrics.zero_crossing_rate);
+
+    // Display track duration
+    print!("  │  Length: ");
+    print_duration(metrics.duration_seconds);
 
     // Display individual band percentages as histogram
     println!("Frequency Bands:");
@@ -172,6 +178,9 @@ fn analyze_frequency_distribution(
     if all_samples.is_empty() {
         return Err("No audio data found".into());
     };
+
+    // Calculate duration in seconds
+    let duration_seconds = all_samples.len() as f32 / sample_rate as f32;
 
     let bands = get_bands(sample_rate);
 
@@ -227,6 +236,7 @@ fn analyze_frequency_distribution(
         centroid,
         spread: normalized_spread,
         zero_crossing_rate: zcr,
+        duration_seconds,
         band_percentages,
     })
 }

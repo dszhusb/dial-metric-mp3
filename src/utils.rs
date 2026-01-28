@@ -13,6 +13,7 @@ pub struct CachedMetrics {
     pub(crate) centroid: f32,
     pub(crate) spread: f32,
     pub(crate) zero_crossing_rate: f32,
+    pub(crate) duration_seconds: f32,
     pub(crate) band_percentages: Vec<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) file_size: Option<u64>,

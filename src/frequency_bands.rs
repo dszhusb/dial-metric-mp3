@@ -12,6 +12,7 @@ pub struct SpectrumMetrics {
     pub(crate) centroid: f32, // Where on the spectrum (0-100, low to high)
     pub(crate) spread: f32,   // How distributed (0-100, focused to broad)
     pub(crate) zero_crossing_rate: f32, // Sharpness/noisiness (0-100)
+    pub(crate) duration_seconds: f32, // Track length in seconds
     pub(crate) band_percentages: Vec<f32>,
 }
 
@@ -208,4 +209,11 @@ pub fn print_histogram_bar(percentage: f32) {
         print!("{}", block_chars[remainder]);
     }
     println!();
+}
+
+pub fn print_duration(seconds: f32) {
+    let total_seconds = seconds as u32;
+    let minutes = total_seconds / 60;
+    let secs = total_seconds % 60;
+    println!("{:>2}:{:02}", minutes, secs);
 }
