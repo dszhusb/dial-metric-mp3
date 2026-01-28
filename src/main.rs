@@ -11,8 +11,9 @@ use utils::get_samples;
 
 use crate::{
     frequency_bands::{
-        calculate_band_energies, calculate_band_positions, calculate_zero_crossing_rate,
-        print_duration, print_histogram_bar, print_spectrum_position, print_spread_bar,
+        calculate_band_energies, calculate_band_positions, calculate_loudness,
+        calculate_zero_crossing_rate, print_duration, print_histogram_bar, print_spectrum_position,
+        print_spread_bar,
     },
     utils::{CachedMetrics, load_cache, save_cache, should_analyze, truncate_filename},
 };
@@ -104,6 +105,7 @@ fn analyze_directory(dir_path: &Path) {
                         centroid: metrics.centroid,
                         spread: metrics.spread,
                         zero_crossing_rate: metrics.zero_crossing_rate,
+                        loudness: metrics.loudness,
                         duration_seconds: metrics.duration_seconds,
                         band_percentages: metrics.band_percentages.clone(),
                         file_size,
@@ -126,6 +128,7 @@ fn analyze_directory(dir_path: &Path) {
                     centroid: cached.centroid,
                     spread: cached.spread,
                     zero_crossing_rate: cached.zero_crossing_rate,
+                    loudness: cached.loudness,
                     duration_seconds: cached.duration_seconds,
                     band_percentages: cached.band_percentages.clone(),
                 };
@@ -158,6 +161,9 @@ fn display_metrics(filename: &str, metrics: &SpectrumMetrics) {
     print_spread_bar(metrics.zero_crossing_rate);
     print!(" ({:>5.1})", metrics.zero_crossing_rate);
 
+    // Display loudness
+    print!("  │  Loudness: {:>6.1} dB", metrics.loudness);
+
     // Display track duration
     print!("  │  Length: ");
     print_duration(metrics.duration_seconds);
@@ -181,6 +187,9 @@ fn analyze_frequency_distribution(
 
     // Calculate duration in seconds
     let duration_seconds = all_samples.len() as f32 / sample_rate as f32;
+
+    // Calculate loudness (RMS in dB)
+    let loudness = calculate_loudness(&all_samples);
 
     let bands = get_bands(sample_rate);
 
@@ -236,6 +245,7 @@ fn analyze_frequency_distribution(
         centroid,
         spread: normalized_spread,
         zero_crossing_rate: zcr,
+        loudness,
         duration_seconds,
         band_percentages,
     })

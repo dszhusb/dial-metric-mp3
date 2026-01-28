@@ -12,6 +12,7 @@ pub struct SpectrumMetrics {
     pub(crate) centroid: f32, // Where on the spectrum (0-100, low to high)
     pub(crate) spread: f32,   // How distributed (0-100, focused to broad)
     pub(crate) zero_crossing_rate: f32, // Sharpness/noisiness (0-100)
+    pub(crate) loudness: f32, // Overall loudness in dB (typically -60 to 0)
     pub(crate) duration_seconds: f32, // Track length in seconds
     pub(crate) band_percentages: Vec<f32>,
 }
@@ -161,6 +162,24 @@ pub fn calculate_zero_crossing_rate(samples: &[f32]) -> f32 {
     let normalized_zcr = (zcr / 0.15 * 100.0).min(100.0);
 
     normalized_zcr
+}
+
+pub fn calculate_loudness(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return -60.0; // Silence
+    }
+
+    // Calculate RMS (Root Mean Square) - standard measure of loudness
+    let sum_squares: f32 = samples.iter().map(|&x| x * x).sum();
+    let rms = (sum_squares / samples.len() as f32).sqrt();
+
+    // Convert to dB, with reference level of 1.0
+    // Add small epsilon to avoid log(0)
+    let epsilon = 1e-10;
+    let db = 20.0 * (rms + epsilon).log10();
+
+    // Clamp to reasonable range (-60 dB to 0 dB)
+    db.max(-60.0).min(0.0)
 }
 
 pub fn print_spectrum_position(centroid: f32) {

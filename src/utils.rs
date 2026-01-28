@@ -13,6 +13,7 @@ pub struct CachedMetrics {
     pub(crate) centroid: f32,
     pub(crate) spread: f32,
     pub(crate) zero_crossing_rate: f32,
+    pub(crate) loudness: f32,
     pub(crate) duration_seconds: f32,
     pub(crate) band_percentages: Vec<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -36,9 +37,10 @@ pub fn get_samples(path: &Path) -> Result<(Vec<f32>, usize), Box<dyn std::error:
                 ..
             }) => {
                 sample_rate = sr as usize;
-                // Convert to mono by averaging channels
+                // Convert to mono by averaging channels and normalize to -1.0 to 1.0 (bits to float)
                 for chunk in data.chunks(2) {
-                    let mono = chunk.iter().map(|&x| x as f32).sum::<f32>() / chunk.len() as f32;
+                    let mono =
+                        chunk.iter().map(|&x| x as f32 / 32768.0).sum::<f32>() / chunk.len() as f32;
                     all_samples.push(mono);
                 }
             }
