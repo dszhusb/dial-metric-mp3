@@ -197,7 +197,7 @@ fn analyze_frequency_distribution(
 
     // Calculate spectral centroid (weighted average position)
     // Map each band to a position: 0 (sub-bass) to 100 (highs)
-    let band_positions = [10.0, 30.0, 50.0, 70.0, 90.0];
+    let band_positions = [8.0, 18.0, 30.0, 45.0, 62.0, 78.0, 92.0];
     let centroid = band_percentages
         .iter()
         .zip(band_positions.iter())

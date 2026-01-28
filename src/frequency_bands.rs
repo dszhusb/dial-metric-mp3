@@ -18,20 +18,12 @@ pub struct SpectrumMetrics {
 pub fn get_bands(sample_rate: usize) -> Vec<FrequencyBand> {
     vec![
         FrequencyBand {
-            low_hz: 0,
-            high_hz: 20,
-        },
-        FrequencyBand {
             low_hz: 20,
             high_hz: 60,
         },
         FrequencyBand {
             low_hz: 60,
             high_hz: 250,
-        },
-        FrequencyBand {
-            low_hz: 250,
-            high_hz: 500,
         },
         FrequencyBand {
             low_hz: 250,
