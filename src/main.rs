@@ -25,7 +25,6 @@ fn main() -> eframe::Result<()> {
     )
 }
 
-#[derive(Default)]
 struct AudioAnalyzerApp {
     selected_folder: Option<PathBuf>,
     results: Arc<Mutex<Vec<AnalysisResult>>>,
@@ -33,6 +32,22 @@ struct AudioAnalyzerApp {
     progress: Arc<Mutex<String>>,
     sort_column: SortColumn,
     sort_ascending: bool,
+}
+
+impl Default for AudioAnalyzerApp {
+    fn default() -> Self {
+        let selected_folder = std::env::current_exe()
+            .ok()
+            .and_then(|exe_path| exe_path.parent().map(|p| p.to_path_buf()));
+        Self {
+            selected_folder,
+            results: Arc::new(Mutex::new(Vec::new())),
+            is_analyzing: Arc::new(Mutex::new(false)),
+            progress: Arc::new(Mutex::new(String::new())),
+            sort_column: SortColumn::default(),
+            sort_ascending: true,
+        }
+    }
 }
 
 #[derive(PartialEq, Clone, Copy)]
