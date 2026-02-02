@@ -84,23 +84,6 @@ impl AudioAnalyzerApp {
         }
     }
 
-    fn export_csv(&self) {
-        let results = self.results.lock().unwrap();
-        if results.is_empty() {
-            return;
-        }
-
-        if let Some(path) = rfd::FileDialog::new()
-            .set_file_name("audio_analysis.csv")
-            .add_filter("CSV", &["csv"])
-            .save_file()
-        {
-            if let Err(e) = export_to_csv(&results, &path) {
-                eprintln!("Failed to export CSV: {}", e);
-            }
-        }
-    }
-
     fn sort_results(&mut self, column: SortColumn) {
         if self.sort_column == column {
             self.sort_ascending = !self.sort_ascending;
@@ -164,13 +147,6 @@ impl eframe::App for AudioAnalyzerApp {
                     .clicked()
                 {
                     self.start_analysis();
-                }
-
-                let results = self.results.lock().unwrap();
-                if !results.is_empty() {
-                    if ui.button("💾 Export CSV").clicked() {
-                        self.export_csv();
-                    }
                 }
 
                 let progress = self.progress.lock().unwrap();
@@ -251,34 +227,4 @@ impl eframe::App for AudioAnalyzerApp {
             ctx.request_repaint();
         }
     }
-}
-
-fn export_to_csv(results: &[AnalysisResult], path: &std::path::Path) -> std::io::Result<()> {
-    use std::io::Write;
-    let mut file = std::fs::File::create(path)?;
-
-    writeln!(
-        file,
-        "Filename,Centroid,Spread,ZCR,Loudness (dB),Duration (s),Band1,Band2,Band3,Band4,Band5,Band6,Band7"
-    )?;
-
-    for result in results {
-        write!(
-            file,
-            "{},{:.2},{:.2},{:.2},{:.2},{:.2}",
-            result.filename,
-            result.centroid,
-            result.spread,
-            result.zero_crossing_rate,
-            result.loudness,
-            result.duration_seconds
-        )?;
-
-        for pct in &result.band_percentages {
-            write!(file, ",{:.2}", pct)?;
-        }
-        writeln!(file)?;
-    }
-
-    Ok(())
 }
