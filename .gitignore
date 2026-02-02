@@ -2,3 +2,4 @@
 /debug
 *.mp3
 file_calc_cache.json
+.DS_Store

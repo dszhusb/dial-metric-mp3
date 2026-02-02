@@ -8,18 +8,20 @@ use minimp3::{Decoder, Frame};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct CachedMetrics {
-    pub(crate) filename: String,
-    pub(crate) centroid: f32,
-    pub(crate) spread: f32,
-    pub(crate) zero_crossing_rate: f32,
-    pub(crate) loudness: f32,
-    pub(crate) duration_seconds: f32,
-    pub(crate) band_percentages: Vec<f32>,
+pub struct AnalysisResult {
+    pub filename: String,
+    pub centroid: f32,
+    pub spread: f32,
+    pub zero_crossing_rate: f32,
+    pub loudness: f32,
+    pub duration_seconds: f32,
+    pub band_percentages: Vec<f32>,
+
+    // Only used for caching, not displayed in GUI
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) file_size: Option<u64>,
+    pub file_size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) modified_time: Option<u64>,
+    pub modified_time: Option<u64>,
 }
 
 pub fn get_samples(path: &Path) -> Result<(Vec<f32>, usize), Box<dyn std::error::Error>> {
@@ -37,7 +39,7 @@ pub fn get_samples(path: &Path) -> Result<(Vec<f32>, usize), Box<dyn std::error:
                 ..
             }) => {
                 sample_rate = sr as usize;
-                // Convert to mono by averaging channels and normalize to -1.0 to 1.0 (bits to float)
+                // Convert to mono by averaging channels and normalize to -1.0 to 1.0 (bit to)
                 for chunk in data.chunks(2) {
                     let mono =
                         chunk.iter().map(|&x| x as f32 / 32768.0).sum::<f32>() / chunk.len() as f32;
@@ -51,15 +53,7 @@ pub fn get_samples(path: &Path) -> Result<(Vec<f32>, usize), Box<dyn std::error:
     return Ok((all_samples, sample_rate));
 }
 
-pub fn truncate_filename(name: &str, max_len: usize) -> String {
-    if name.len() <= max_len {
-        name.to_string()
-    } else {
-        format!("{}...", &name[..max_len - 3])
-    }
-}
-
-pub fn load_cache(cache_file: &Path) -> HashMap<String, CachedMetrics> {
+pub fn load_cache(cache_file: &Path) -> HashMap<String, AnalysisResult> {
     if let Ok(file) = File::open(cache_file) {
         let reader = BufReader::new(file);
         serde_json::from_reader(reader).unwrap_or_default()
@@ -68,7 +62,7 @@ pub fn load_cache(cache_file: &Path) -> HashMap<String, CachedMetrics> {
     }
 }
 
-pub fn save_cache(cache_file: &Path, cache: &HashMap<String, CachedMetrics>) {
+pub fn save_cache(cache_file: &Path, cache: &HashMap<String, AnalysisResult>) {
     if let Ok(file) = File::create(cache_file) {
         let writer = BufWriter::new(file);
         let _ = serde_json::to_writer_pretty(writer, cache);
@@ -77,7 +71,7 @@ pub fn save_cache(cache_file: &Path, cache: &HashMap<String, CachedMetrics>) {
 
 pub fn should_analyze(
     file_path: &Path,
-    cache: &HashMap<String, CachedMetrics>,
+    cache: &HashMap<String, AnalysisResult>,
     filename: &str,
 ) -> bool {
     // If not in cache, analyze

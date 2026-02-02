@@ -1,252 +1,284 @@
+use eframe::egui;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+mod analyze;
 mod frequency_bands;
 mod utils;
+use analyze::analyze_directory_batch;
 
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
+use crate::utils::AnalysisResult;
 
-use frequency_bands::{SpectrumMetrics, get_bands};
-use utils::get_samples;
-
-use crate::{
-    frequency_bands::{
-        calculate_band_energies, calculate_band_positions, calculate_loudness,
-        calculate_zero_crossing_rate, print_duration, print_histogram_bar, print_spectrum_position,
-        print_spread_bar,
-    },
-    utils::{CachedMetrics, load_cache, save_cache, should_analyze, truncate_filename},
-};
-
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    let target_path = if args.len() == 2 {
-        PathBuf::from(&args[1])
-    } else {
-        env::current_dir().expect("Failed to get current directory")
+fn main() -> eframe::Result<()> {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1200.0, 700.0])
+            .with_title("Audio Frequency Analyzer"),
+        ..Default::default()
     };
 
-    if !target_path.is_dir() {
-        eprintln!("Usage: {} [directory]", args[0]);
-        eprintln!("If no path is provided, analyzes all MP3s in the current directory");
-        std::process::exit(1);
-    }
-
-    analyze_directory(&target_path);
+    eframe::run_native(
+        "Audio Frequency Analyzer",
+        options,
+        Box::new(|_cc| Ok(Box::new(AudioAnalyzerApp::default()))),
+    )
 }
 
-fn analyze_directory(dir_path: &Path) {
-    let cache_file = dir_path.join("file_calc_cache.json");
+#[derive(Default)]
+struct AudioAnalyzerApp {
+    selected_folder: Option<PathBuf>,
+    results: Arc<Mutex<Vec<AnalysisResult>>>,
+    is_analyzing: Arc<Mutex<bool>>,
+    progress: Arc<Mutex<String>>,
+    sort_column: SortColumn,
+    sort_ascending: bool,
+}
 
-    let mut cache = load_cache(&cache_file);
+#[derive(PartialEq, Clone, Copy)]
+enum SortColumn {
+    Filename,
+    Centroid,
+    Spread,
+    ZCR,
+    Loudness,
+    Duration,
+}
 
-    // Read all entries in the directory
-    let entries = match fs::read_dir(dir_path) {
-        Ok(entries) => entries,
-        Err(e) => {
-            eprintln!("Error reading directory: {}", e);
+impl Default for SortColumn {
+    fn default() -> Self {
+        SortColumn::Filename
+    }
+}
+
+impl AudioAnalyzerApp {
+    fn select_folder(&mut self) {
+        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+            self.selected_folder = Some(path);
+        }
+    }
+
+    fn start_analysis(&mut self) {
+        if let Some(folder) = &self.selected_folder {
+            let folder = folder.clone();
+            let results = self.results.clone();
+            let is_analyzing = self.is_analyzing.clone();
+            let progress = self.progress.clone();
+
+            *is_analyzing.lock().unwrap() = true;
+            *results.lock().unwrap() = Vec::new();
+            *progress.lock().unwrap() = "Starting analysis...".to_string();
+
+            thread::spawn(move || {
+                match analyze_directory_batch(&folder, progress.clone()) {
+                    Ok(analysis_results) => {
+                        *results.lock().unwrap() = analysis_results;
+                        *progress.lock().unwrap() = "Analysis complete!".to_string();
+                    }
+                    Err(e) => {
+                        *progress.lock().unwrap() = format!("Error: {}", e);
+                    }
+                }
+                *is_analyzing.lock().unwrap() = false;
+            });
+        }
+    }
+
+    fn export_csv(&self) {
+        let results = self.results.lock().unwrap();
+        if results.is_empty() {
             return;
         }
-    };
 
-    // Collect all MP3 files
-    let mut mp3_files: Vec<PathBuf> = entries
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.eq_ignore_ascii_case("mp3"))
-                .unwrap_or(false)
-        })
-        .collect();
-
-    if mp3_files.is_empty() {
-        println!("No MP3 files found in directory: {}", dir_path.display());
-        return;
-    }
-
-    mp3_files.sort();
-
-    println!(
-        "\nFound {} MP3 file(s) in {}\n",
-        mp3_files.len(),
-        dir_path.display()
-    );
-    println!("{}", "=".repeat(80));
-
-    let mut updated = false;
-
-    for file_path in mp3_files.iter() {
-        let filename = file_path.file_name().unwrap().to_string_lossy().to_string();
-
-        // Check if we need to analyze this file
-        let needs_analysis = should_analyze(&file_path, &cache, &filename);
-
-        if needs_analysis {
-            if let Ok(metrics) = analyze_frequency_distribution(&file_path) {
-                // Get file metadata
-                let metadata = fs::metadata(&file_path).ok();
-                let file_size = metadata.as_ref().and_then(|m| Some(m.len()));
-                let modified_time = metadata.as_ref().and_then(|m| {
-                    m.modified().ok().and_then(|t| {
-                        t.duration_since(std::time::UNIX_EPOCH)
-                            .ok()
-                            .map(|d| d.as_secs())
-                    })
-                });
-
-                // Update cache
-                cache.insert(
-                    filename.clone(),
-                    CachedMetrics {
-                        filename: filename.clone(),
-                        centroid: metrics.centroid,
-                        spread: metrics.spread,
-                        zero_crossing_rate: metrics.zero_crossing_rate,
-                        loudness: metrics.loudness,
-                        duration_seconds: metrics.duration_seconds,
-                        band_percentages: metrics.band_percentages.clone(),
-                        file_size,
-                        modified_time,
-                    },
-                );
-                updated = true;
-
-                display_metrics(&filename, &metrics);
-            } else {
-                println!(
-                    "\n{:<40}  ERROR: Failed to analyze",
-                    truncate_filename(&filename, 40)
-                );
-            }
-        } else {
-            // Use cached data
-            if let Some(cached) = cache.get(&filename) {
-                let metrics = SpectrumMetrics {
-                    centroid: cached.centroid,
-                    spread: cached.spread,
-                    zero_crossing_rate: cached.zero_crossing_rate,
-                    loudness: cached.loudness,
-                    duration_seconds: cached.duration_seconds,
-                    band_percentages: cached.band_percentages.clone(),
-                };
-                display_metrics(&filename, &metrics);
+        if let Some(path) = rfd::FileDialog::new()
+            .set_file_name("audio_analysis.csv")
+            .add_filter("CSV", &["csv"])
+            .save_file()
+        {
+            if let Err(e) = export_to_csv(&results, &path) {
+                eprintln!("Failed to export CSV: {}", e);
             }
         }
     }
 
-    // Save cache if updated
-    if updated {
-        save_cache(&cache_file, &cache);
+    fn sort_results(&mut self, column: SortColumn) {
+        if self.sort_column == column {
+            self.sort_ascending = !self.sort_ascending;
+        } else {
+            self.sort_column = column;
+            self.sort_ascending = true;
+        }
+
+        let mut results = self.results.lock().unwrap();
+        let ascending = self.sort_ascending;
+
+        results.sort_by(|a, b| {
+            let cmp = match self.sort_column {
+                SortColumn::Filename => a.filename.cmp(&b.filename),
+                SortColumn::Centroid => a.centroid.partial_cmp(&b.centroid).unwrap(),
+                SortColumn::Spread => a.spread.partial_cmp(&b.spread).unwrap(),
+                SortColumn::ZCR => a
+                    .zero_crossing_rate
+                    .partial_cmp(&b.zero_crossing_rate)
+                    .unwrap(),
+                SortColumn::Loudness => a.loudness.partial_cmp(&b.loudness).unwrap(),
+                SortColumn::Duration => {
+                    a.duration_seconds.partial_cmp(&b.duration_seconds).unwrap()
+                }
+            };
+            if ascending { cmp } else { cmp.reverse() }
+        });
     }
 }
 
-fn display_metrics(filename: &str, metrics: &SpectrumMetrics) {
-    println!("\n{:<40}", truncate_filename(filename, 40));
+impl eframe::App for AudioAnalyzerApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("🎵 Audio Frequency Analyzer");
+            ui.add_space(10.0);
 
-    // Display spectral centroid
-    print!("Centroid: ");
-    print_spectrum_position(metrics.centroid);
-    print!(" ({:>5.1})", metrics.centroid);
+            // Folder selection
+            ui.horizontal(|ui| {
+                if ui.button("📁 Select Folder").clicked() {
+                    self.select_folder();
+                }
 
-    // Display spectral spread
-    print!("  │  Spread: ");
-    print_spread_bar(metrics.spread);
-    print!(" ({:>5.1})", metrics.spread);
+                if let Some(folder) = &self.selected_folder {
+                    ui.label(format!("Selected: {}", folder.display()));
+                } else {
+                    ui.label("No folder selected");
+                }
+            });
 
-    // Display zero-crossing rate
-    print!("  │  ZCR: ");
-    print_spread_bar(metrics.zero_crossing_rate);
-    print!(" ({:>5.1})", metrics.zero_crossing_rate);
+            ui.add_space(10.0);
 
-    // Display loudness
-    print!("  │  Loudness: {:>6.1} dB", metrics.loudness);
+            // Analyze button
+            ui.horizontal(|ui| {
+                let is_analyzing = *self.is_analyzing.lock().unwrap();
 
-    // Display track duration
-    print!("  │  Length: ");
-    print_duration(metrics.duration_seconds);
+                if ui
+                    .add_enabled(
+                        !is_analyzing && self.selected_folder.is_some(),
+                        egui::Button::new("▶ Analyze"),
+                    )
+                    .clicked()
+                {
+                    self.start_analysis();
+                }
 
-    // Display individual band percentages as histogram
-    println!("Frequency Bands:");
-    for pct in &metrics.band_percentages {
-        print!("  ");
-        print_histogram_bar(*pct);
-    }
-}
+                let results = self.results.lock().unwrap();
+                if !results.is_empty() {
+                    if ui.button("💾 Export CSV").clicked() {
+                        self.export_csv();
+                    }
+                }
 
-fn analyze_frequency_distribution(
-    path: &Path,
-) -> Result<SpectrumMetrics, Box<dyn std::error::Error>> {
-    let (all_samples, sample_rate) = get_samples(path)?;
+                let progress = self.progress.lock().unwrap();
+                if !progress.is_empty() {
+                    ui.label(&*progress);
+                }
+            });
 
-    if all_samples.is_empty() {
-        return Err("No audio data found".into());
-    };
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(10.0);
 
-    // Calculate duration in seconds
-    let duration_seconds = all_samples.len() as f32 / sample_rate as f32;
+            let results_clone = {
+                let results = self.results.lock().unwrap();
+                results.clone()
+            };
 
-    // Calculate loudness (RMS in dB)
-    let loudness = calculate_loudness(&all_samples);
+            // Results table
+            if !results_clone.is_empty() {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    egui::Grid::new("results_grid")
+                        .striped(true)
+                        .spacing([10.0, 4.0])
+                        .show(ui, |ui| {
+                            // Headers
+                            if ui.button("Filename").clicked() {
+                                self.sort_results(SortColumn::Filename);
+                            }
+                            if ui.button("Centroid").clicked() {
+                                self.sort_results(SortColumn::Centroid);
+                            }
+                            if ui.button("Spread").clicked() {
+                                self.sort_results(SortColumn::Spread);
+                            }
+                            if ui.button("ZCR").clicked() {
+                                self.sort_results(SortColumn::ZCR);
+                            }
+                            if ui.button("Loudness").clicked() {
+                                self.sort_results(SortColumn::Loudness);
+                            }
+                            if ui.button("Duration").clicked() {
+                                self.sort_results(SortColumn::Duration);
+                            }
+                            ui.label("Bands");
+                            ui.end_row();
 
-    let bands = get_bands(sample_rate);
+                            // Data rows
+                            for result in results_clone.iter() {
+                                ui.label(&result.filename);
+                                ui.label(format!("{:.1}", result.centroid));
+                                ui.label(format!("{:.1}", result.spread));
+                                ui.label(format!("{:.1}", result.zero_crossing_rate));
+                                ui.label(format!("{:.1} dB", result.loudness));
 
-    // Calculate energy distribution
-    let band_energies = calculate_band_energies(&all_samples, sample_rate, &bands)?;
+                                let mins = result.duration_seconds as u32 / 60;
+                                let secs = result.duration_seconds as u32 % 60;
+                                ui.label(format!("{}:{:02}", mins, secs));
 
-    // Calculate zero-crossing rate
-    let zcr = calculate_zero_crossing_rate(&all_samples);
+                                let bands_str = result
+                                    .band_percentages
+                                    .iter()
+                                    .map(|p| format!("{:.0}%", p))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                ui.label(bands_str);
 
-    // Calculate total energy
-    let total_energy: f64 = band_energies.iter().sum();
-
-    // Convert to percentages
-    let band_percentages: Vec<f32> = band_energies
-        .iter()
-        .map(|&energy| {
-            if total_energy > 0.0 {
-                (energy / total_energy * 100.0) as f32
-            } else {
-                0.0
+                                ui.end_row();
+                            }
+                        });
+                });
+            } else if !*self.is_analyzing.lock().unwrap() {
+                ui.label("No results yet. Select a folder and click Analyze to begin.");
             }
-        })
-        .collect();
+        });
 
-    // Calculate spectral centroid (weighted average position)
-    // Map each band to a position: 0 (sub-bass) to 100 (highs)
-    let band_positions = calculate_band_positions(&bands, sample_rate);
+        // Request repaint if analyzing
+        if *self.is_analyzing.lock().unwrap() {
+            ctx.request_repaint();
+        }
+    }
+}
 
-    let centroid = band_percentages
-        .iter()
-        .zip(band_positions.iter())
-        .map(|(pct, pos)| pct * pos)
-        .sum::<f32>()
-        / 100.0;
+fn export_to_csv(results: &[AnalysisResult], path: &std::path::Path) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)?;
 
-    // Calculate spectral spread (standard deviation from centroid)
-    let variance = band_percentages
-        .iter()
-        .zip(band_positions.iter())
-        .map(|(pct, pos)| {
-            let diff = pos - centroid;
-            pct * diff * diff
-        })
-        .sum::<f32>()
-        / 100.0;
+    writeln!(
+        file,
+        "Filename,Centroid,Spread,ZCR,Loudness (dB),Duration (s),Band1,Band2,Band3,Band4,Band5,Band6,Band7"
+    )?;
 
-    let spread = variance.sqrt();
+    for result in results {
+        write!(
+            file,
+            "{},{:.2},{:.2},{:.2},{:.2},{:.2}",
+            result.filename,
+            result.centroid,
+            result.spread,
+            result.zero_crossing_rate,
+            result.loudness,
+            result.duration_seconds
+        )?;
 
-    // Normalize spread to 0-100 scale (typical spread ranges from 0-35)
-    let normalized_spread = (spread / 35.0 * 100.0).min(100.0);
+        for pct in &result.band_percentages {
+            write!(file, ",{:.2}", pct)?;
+        }
+        writeln!(file)?;
+    }
 
-    Ok(SpectrumMetrics {
-        centroid,
-        spread: normalized_spread,
-        zero_crossing_rate: zcr,
-        loudness,
-        duration_seconds,
-        band_percentages,
-    })
+    Ok(())
 }

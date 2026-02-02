@@ -8,15 +8,6 @@ pub struct FrequencyBand {
     pub(crate) high_hz: usize,
 }
 
-pub struct SpectrumMetrics {
-    pub(crate) centroid: f32, // Where on the spectrum (0-100, low to high)
-    pub(crate) spread: f32,   // How distributed (0-100, focused to broad)
-    pub(crate) zero_crossing_rate: f32, // Sharpness/noisiness (0-100)
-    pub(crate) loudness: f32, // Overall loudness in dB (typically -60 to 0)
-    pub(crate) duration_seconds: f32, // Track length in seconds
-    pub(crate) band_percentages: Vec<f32>,
-}
-
 pub fn get_bands(sample_rate: usize) -> Vec<FrequencyBand> {
     vec![
         FrequencyBand {
@@ -180,59 +171,4 @@ pub fn calculate_loudness(samples: &[f32]) -> f32 {
 
     // Clamp to reasonable range (-60 dB to 0 dB)
     db.max(-60.0).min(0.0)
-}
-
-pub fn print_spectrum_position(centroid: f32) {
-    let bar_width = 20;
-    let position = ((centroid / 100.0) * bar_width as f32) as usize;
-
-    print!("[");
-    for i in 0..bar_width {
-        if i == position {
-            print!("●");
-        } else {
-            print!("─");
-        }
-    }
-    print!("]");
-}
-
-pub fn print_spread_bar(spread: f32) {
-    let bar_width = 10;
-    let filled = ((spread / 100.0) * bar_width as f32) as usize;
-
-    print!("[");
-    for i in 0..bar_width {
-        if i < filled {
-            print!("█");
-        } else {
-            print!("░");
-        }
-    }
-    print!("]");
-}
-
-pub fn print_histogram_bar(percentage: f32) {
-    // Each character represents 5% (max 20 chars for 100%)
-    let max_width = 10;
-    let blocks = (percentage / 10.0 * max_width as f32) * 8.0;
-    let full_blocks = blocks as usize / 8;
-    let remainder = blocks as usize % 8;
-
-    print!("{:>5.1}% | ", percentage);
-    let block_chars: [char; 9] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
-    for _ in 0..full_blocks {
-        print!("█");
-    }
-    if remainder > 0 {
-        print!("{}", block_chars[remainder]);
-    }
-    println!();
-}
-
-pub fn print_duration(seconds: f32) {
-    let total_seconds = seconds as u32;
-    let minutes = total_seconds / 60;
-    let secs = total_seconds % 60;
-    println!("{:>2}:{:02}", minutes, secs);
 }
