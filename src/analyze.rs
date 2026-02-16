@@ -23,7 +23,7 @@ pub fn analyze_directory_batch(
     mp3_files.sort();
 
     // Use a single cache file in the root directory
-    let cache_file = dir_path.join(".frequency_analysis_cache.json");
+    let cache_file = dir_path.join("frequency_analysis_cache.json");
     let mut cache = load_cache(&cache_file);
 
     let mut results: Vec<AnalysisResult> = Vec::new();
